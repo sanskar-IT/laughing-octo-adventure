@@ -1,0 +1,10 @@
+body {
+  /* The path is now simpler because the files are in the same folder */
+  background-image: url("background opera epiclese..webp");
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  min-height: 100vh; 
+  color: #e0e0e0;
+}

@@ -1,0 +1,51 @@
+{
+  "name": "ai-companion",
+  "version": "1.0.0",
+  "description": "Privacy-centric AI companion with Live2D integration",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "start:backend": "node backend/server.js",
+    "start:tts": "python tts-server.py",
+    "install:all": "npm install && pip install pyttsx3"
+  },
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.0.1",
+    "archiver": "^7.0.1",
+    "axios": "^1.6.2",
+    "chokidar": "^5.0.0",
+    "dotenv": "^17.2.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "litellm": "^0.12.0",
+    "lowdb": "^1.0.0",
+    "multer": "^2.0.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-redux": "^9.0.4",
+    "unzipper": "^0.12.3",
+    "uuid": "^9.0.1",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.55.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}

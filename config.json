@@ -1,0 +1,41 @@
+{
+  "app": {
+    "name": "AI Companion",
+    "version": "1.0.0",
+    "port": 3000,
+    "environment": "development"
+  },
+  "lmStudio": {
+    "baseUrl": "http://localhost:1234/v1",
+    "model": "default",
+    "timeout": 30000,
+    "maxTokens": 2048,
+    "temperature": 0.7,
+    "systemPrompt": "You are a friendly AI companion. You are caring, helpful, and engaging. You respond concisely but warmly. Remember important details from conversations."
+  },
+  "tts": {
+    "engine": "local",
+    "host": "localhost",
+    "port": 8000,
+    "voiceId": "default",
+    "speed": 1.0,
+    "sampleRate": 44100
+  },
+  "live2d": {
+    "modelPath": "./models/",
+    "defaultModel": "furina",
+    "scale": 1.0,
+    "lipSyncEnabled": true
+  },
+  "memory": {
+    "type": "sqlite",
+    "maxContextWindow": 4096,
+    "retrievalLimit": 5,
+    "importanceThreshold": 0.5
+  },
+  "privacy": {
+    "enforceLocalhost": true,
+    "blockTelemetry": true,
+    "logLevel": "error"
+  }
+}
