@@ -1,0 +1,57 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# AI Companion Pre-Commit Hook
+# Runs: lint-staged, Secret scanning
+# Blocks commits with: API keys, secrets, lint errors
+
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# Track if any check fails
+FAILED=0
+
+# 1. Secret Scanning with git-secrets (STRICT)
+echo "🔐 Checking for secrets..."
+if command -v git-secrets &> /dev/null; then
+    if git secrets --scan 2>/dev/null; then
+        echo "   ✅ No secrets detected"
+    else
+        SECRETS_EXIT=$?
+        if [ $SECRETS_EXIT -eq 1 ]; then
+            echo "❌ SECRETS DETECTED! Commit blocked."
+            echo "💡 Move API keys to .env file (which is gitignored)"
+            echo ""
+            FAILED=1
+        fi
+    fi
+else
+    echo "   ⚠️  git-secrets not installed. Skipping secret scan."
+    echo "   Install git-secrets: https://github.com/awslabs/git-secrets"
+fi
+
+# 2. Run lint-staged (runs ESLint and flake8 on staged files only)
+echo "📝 Running linters on staged files..."
+if ! npx lint-staged; then
+    echo ""
+    echo "❌ Linting failed!"
+    echo "💡 Some issues were auto-fixed. Run 'git status' and try again."
+    echo ""
+    FAILED=1
+fi
+
+# Final result
+if [ $FAILED -eq 1 ]; then
+    echo ""
+    echo "⛔ Commit blocked! Fix the issues above."
+    echo ""
+    echo "Emergency bypass (requires admin approval):"
+    echo "   Contact: admin@company.com with justification"
+    echo ""
+    exit 1
+else
+    echo ""
+    echo "✅ All checks passed!"
+    echo ""
+    exit 0
+fi

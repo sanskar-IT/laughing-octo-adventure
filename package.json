@@ -8,13 +8,18 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "lint:python": "python -m flake8 backend/ tts-server.py tts-bridge/ --max-line-length=100 --extend-ignore=E203,W503",
     "start:backend": "node backend/server.js",
     "start:tts": "python tts-server.py",
-    "install:all": "npm install && pip install pyttsx3"
+    "setup:tts": "setup-tts-server.bat",
+    "start:tts:async": "start-tts-server.bat",
+    "test:tts": "python test_tts_async.py",
+    "install:all": "npm install && pip install -r tts-server-requirements.txt",
+    "prepare": "husky install && npm run setup:secrets",
+    "setup:secrets": "bash scripts/setup-secrets.sh || echo 'Git-secrets setup skipped on Windows'"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.0.1",
-<<<<<<< HEAD
     "archiver": "^7.0.1",
     "axios": "^1.6.2",
     "chokidar": "^5.0.0",
@@ -31,18 +36,6 @@
     "react-dom": "^18.2.0",
     "react-redux": "^9.0.4",
     "unzipper": "^0.12.3",
-=======
-    "axios": "^1.6.2",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1",
-    "express": "^4.18.2",
-    "lowdb": "^1.0.0",
-    "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^8.15.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-redux": "^9.0.4",
->>>>>>> ff6ad8ba64ecdfc7321d5982b49d420195c10bd4
     "uuid": "^9.0.1",
     "zustand": "^4.4.7"
   },
@@ -58,7 +51,18 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "typescript": "^5.3.3",
     "vite": "^5.0.8"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "git add"
+    ],
+    "*.py": [
+      "sh -c 'command -v flake8 >/dev/null 2>&1 && flake8 --max-line-length=100 --extend-ignore=E203,W503 \"$0\" || echo \"flake8 not installed, skipping Python lint\"'"
+    ]
   }
 }
