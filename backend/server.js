@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -167,3 +168,60 @@ process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   process.exit(0);
 });
+=======
+import express from 'express'
+import cors from 'cors'
+import bodyParser from 'body-parser'
+import axios from 'axios'
+import config from '../config.json' assert { type: 'json' }
+import { appendMemory, loadRecent } from '../dist-memory.js'
+
+const app = express()
+app.use(cors())
+app.use(bodyParser.json())
+
+const baseUrl = config.lmStudio.baseUrl
+
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { messages = [] } = req.body
+    if (!(baseUrl.startsWith('http://localhost') || baseUrl.startsWith('http://127.0.0.1')) && config.privacy.enforceLocalhost) {
+      return res.status(403).json({ error: 'Remote endpoints blocked' })
+    }
+    const system = { role: 'system', content: config.lmStudio.systemPrompt }
+    const history = loadRecent(config.memory.retrievalLimit)
+    const payload = {
+      model: config.lmStudio.model,
+      messages: [system, ...history, ...messages],
+      max_tokens: config.lmStudio.maxTokens,
+      temperature: config.lmStudio.temperature,
+      stream: false
+    }
+    const response = await axios.post(`${baseUrl}/chat/completions`, payload, {
+      timeout: config.lmStudio.timeout,
+      headers: { 'Content-Type': 'application/json' }
+    })
+    const content = response.data?.choices?.[0]?.message?.content ?? ''
+    appendMemory('assistant', content)
+    return res.json({ content })
+  } catch (error) {
+    console.error(error)
+    return res.status(500).json({ error: 'LLM error' })
+  }
+})
+
+app.post('/api/memory', (req, res) => {
+  const { role, content } = req.body
+  if (!role || !content) return res.status(400).json({ error: 'Missing fields' })
+  appendMemory(role, content)
+  res.json({ success: true })
+})
+
+app.get('/api/memory', (_, res) => {
+  res.json(loadRecent(config.memory.retrievalLimit))
+})
+
+app.listen(config.app.port, () => {
+  console.log(`Backend listening on http://localhost:${config.app.port}`)
+})
+>>>>>>> ff6ad8ba64ecdfc7321d5982b49d420195c10bd4

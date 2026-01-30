@@ -109,4 +109,8 @@ This application is designed to be completely offline-capable.
 ## 📄 License
 
 MIT License - feel free to use this for your own portfolio or personal projects.
+<<<<<<< HEAD
 "# AI-cuddle" 
+=======
+"# AI-cuddle" 
+>>>>>>> ff6ad8ba64ecdfc7321d5982b49d420195c10bd4

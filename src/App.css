@@ -1,0 +1,85 @@
+.app {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr;
+  min-height: 100vh;
+}
+
+.live2d-pane {
+  position: relative;
+  background: linear-gradient(135deg, rgba(76, 0, 255, 0.2), rgba(0, 255, 200, 0.15));
+}
+
+.chat-pane {
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px;
+}
+
+.msg {
+  padding: 10px 12px;
+  border-radius: 10px;
+  max-width: 90%;
+  width: fit-content;
+}
+
+.msg.user {
+  background: rgba(0, 200, 255, 0.15);
+  align-self: flex-end;
+}
+
+.msg.assistant {
+  background: rgba(255, 255, 255, 0.08);
+  align-self: flex-start;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.input-row button {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.input-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 960px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .live2d-pane {
+    min-height: 320px;
+  }
+}

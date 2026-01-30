@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
 import { Live2DModel } from 'pixi-live2d-display';
@@ -179,3 +180,78 @@ export function Live2DCanvas({ modelPath }: Live2DComponentProps) {
 }
 
 export default Live2DCanvas;
+=======
+import { Live2DModel } from 'pixi-live2d-display'
+import * as PIXI from 'pixi.js'
+import { useEffect, useRef } from 'react'
+import config from '../../config.json'
+
+type Props = { modelPath?: string; visemes?: Array<{ time: number; value: number; duration: number }> }
+
+export function Live2DCanvas({ modelPath, visemes }: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const appRef = useRef<PIXI.Application | null>(null)
+  const modelRef = useRef<any>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const app = new PIXI.Application({
+      backgroundAlpha: 0,
+      resizeTo: container
+    })
+    container.appendChild(app.view as unknown as Node)
+    appRef.current = app
+
+    const loadModel = async () => {
+      const model = await Live2DModel.from(modelPath ?? `${config.live2d.modelPath}${config.live2d.defaultModel}/${config.live2d.defaultModel}.model3.json`)
+      model.scale.set(config.live2d.scale)
+      model.anchor.set(0.5, 0.5)
+      model.position.set(app.renderer.width / 2, app.renderer.height * 0.9)
+      app.stage.addChild(model)
+      modelRef.current = model
+    }
+
+    loadModel()
+
+    const handleResize = () => {
+      if (!modelRef.current || !app.renderer) return
+      modelRef.current.position.set(app.renderer.width / 2, app.renderer.height * 0.9)
+    }
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      app.destroy(true, { children: true })
+    }
+  }, [modelPath])
+
+  useEffect(() => {
+    if (!visemes || !config.live2d.lipSyncEnabled) return
+    const model = modelRef.current as any
+    if (!model) return
+
+    let cancelled = false
+    const start = performance.now()
+
+    const step = () => {
+      if (cancelled) return
+      const elapsed = (performance.now() - start) / 1000
+      const current = visemes.find((v) => elapsed >= v.time && elapsed <= v.time + v.duration)
+      if (current) {
+        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', current.value / 15)
+      }
+      requestAnimationFrame(step)
+    }
+    step()
+    return () => {
+      cancelled = true
+    }
+  }, [visemes])
+
+  return <div style={{ width: '100%', height: '100%' }} ref={containerRef} />
+}
+
+export default Live2DCanvas
+>>>>>>> ff6ad8ba64ecdfc7321d5982b49d420195c10bd4
