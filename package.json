@@ -58,8 +58,7 @@
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "git add"
+      "eslint --fix"
     ],
     "*.py": [
       "sh -c 'command -v flake8 >/dev/null 2>&1 && flake8 --max-line-length=100 --extend-ignore=E203,W503 \"$0\" || echo \"flake8 not installed, skipping Python lint\"'"
