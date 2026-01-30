@@ -3,65 +3,64 @@ const RoleplayContextBuilder = require('../characters/RoleplayContextBuilder');
 const CharacterCardParser = require('../characters/CharacterCardParser');
 const { sanitizeChatMessage, sanitizeInput } = require('../middleware/auth');
 
-/**
- * Streaming controller for SSE chat responses
- * Handles provider fallback, character integration, and real-time streaming
- */
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+
+function getCorsOrigin(req) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    return origin;
+  }
+  return ALLOWED_ORIGINS[0] || 'http://localhost:5173';
+}
+
 class StreamingController {
   constructor() {
     this.providerFactory = providerFactory;
   }
 
-  /**
-   * Handle streaming chat request
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
   async handleStreamRequest(req, res) {
     let { messages, character_card, model, conversationId } = req.body;
 
-    // Security: Validate and sanitize inputs
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Messages array is required and must not be empty' }));
       return;
     }
 
-    // Security: Sanitize all messages
     messages = messages.map(msg => sanitizeChatMessage(msg)).filter(msg => msg !== null);
-    
+
     if (messages.length === 0) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'No valid messages after sanitization' }));
       return;
     }
 
-    // Security: Sanitize model identifier
     if (model) {
       model = sanitizeInput(model, 100);
-      // Validate model format (provider/model-name)
       if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(model)) {
         console.warn(`[Security] Invalid model format: ${model}`);
-        model = null; // Use default
+        model = null;
       }
     }
 
-    // Security: Sanitize conversation ID
     if (conversationId) {
       conversationId = sanitizeInput(conversationId, 50);
-      // Validate UUID format or simple ID format
       if (!/^[a-zA-Z0-9_-]+$/.test(conversationId)) {
         console.warn(`[Security] Invalid conversation ID format`);
         conversationId = 'default-session';
       }
     }
 
-    // Set SSE headers
+    const corsOrigin = getCorsOrigin(req);
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Headers': 'Cache-Control, Content-Type',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
     });
@@ -75,7 +74,6 @@ class StreamingController {
     try {
       console.log(`[StreamingController] Request received with model: ${model || 'default'}`);
 
-      // Parse character card if provided
       let characterInfo = null;
       if (character_card) {
         try {
@@ -93,7 +91,6 @@ class StreamingController {
         }
       }
 
-      // Get active provider
       let provider;
       try {
         provider = await this.providerFactory.getActiveProvider();
@@ -109,12 +106,10 @@ class StreamingController {
         return;
       }
 
-      // Check provider health
       const isHealthy = await provider.checkConnection();
       if (!isHealthy.connected) {
         console.log(`[StreamingController] Provider unhealthy: ${isHealthy.error}`);
 
-        // If local provider is offline, send specific error for UI
         if (isHealthy.type === 'local') {
           sendSSE('error', {
             status: 'offline',
@@ -126,9 +121,8 @@ class StreamingController {
           res.end();
           return;
         } else {
-          // Try fallback for cloud providers
           const fallbackProvider = await this.providerFactory.getFallbackProvider(provider.getModel());
-          
+
           if (fallbackProvider) {
             sendSSE('provider_switch', {
               from: provider.getName(),
@@ -150,7 +144,6 @@ class StreamingController {
         }
       }
 
-      // Notify provider connection
       sendSSE('provider_connected', {
         provider: provider.getName(),
         model: provider.getModel(),
@@ -159,19 +152,16 @@ class StreamingController {
         timestamp: new Date().toISOString()
       });
 
-      // Build roleplay context
       const roleplayContext = RoleplayContextBuilder.buildContext(
         characterInfo,
         messages,
         messages[messages.length - 1]?.content,
-        null // Memory manager would be passed in production
+        null
       );
 
-      // Optional: Truncate context if too long
       const maxTokens = provider.config.max_tokens || 4096;
       const finalContext = RoleplayContextBuilder.truncateContext(roleplayContext, maxTokens);
 
-      // Stream response
       let fullResponse = '';
       let chunkCount = 0;
       const startTime = Date.now();
@@ -205,7 +195,7 @@ class StreamingController {
         if (chunk.done) {
           const endTime = Date.now();
           const latency = endTime - startTime;
-          
+
           sendSSE('done', {
             provider: chunk.provider,
             model: chunk.model,
@@ -233,14 +223,10 @@ class StreamingController {
     }
   }
 
-  /**
-   * Handle OPTIONS request for CORS
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
   handleOptions(req, res) {
+    const corsOrigin = getCorsOrigin(req);
     res.writeHead(200, {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Cache-Control',
       'Access-Control-Max-Age': '86400'
@@ -248,14 +234,8 @@ class StreamingController {
     res.end();
   }
 
-  /**
-   * Get streaming status and provider information
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
   async handleStatusRequest(req, res) {
     try {
-      // Get all available providers
       const availableProviders = await this.providerFactory.getAvailableProviders();
       const activeProvider = await this.providerFactory.getActiveProvider();
       const activeModel = this.providerFactory.getActiveModel();
@@ -288,15 +268,10 @@ class StreamingController {
     }
   }
 
-  /**
-   * Handle provider switching
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   */
   async handleSwitchRequest(req, res) {
     try {
       const { new_model } = req.body;
-      
+
       if (!new_model) {
         return res.status(400).json({
           error: 'new_model is required'
@@ -304,9 +279,9 @@ class StreamingController {
       }
 
       console.log(`[StreamingController] Switching to model: ${new_model}`);
-      
+
       const success = await this.providerFactory.switchProvider(new_model);
-      
+
       if (success) {
         res.json({
           success: true,

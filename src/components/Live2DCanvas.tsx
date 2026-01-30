@@ -1,257 +1,298 @@
-<<<<<<< HEAD
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import { Live2DModel } from 'pixi-live2d-display';
 import { useStore } from '../store/useStore';
+import { Live2DModelLoader } from '../services/live2dModelLoader';
+import { Live2DParameterManager } from '../services/live2dParameterManager';
+import { ResourceGuard } from '../services/resourceGuard';
+import './Live2DCanvas.css';
 
-// Expose PIXI to window for the plugin (sometimes required)
 (window as any).PIXI = PIXI;
 
 interface Live2DComponentProps {
-  modelPath: string; // e.g., "/models/furina/furina.model3.json"
+  modelPath: string;
 }
 
 export function Live2DCanvas({ modelPath }: Live2DComponentProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [app, setApp] = useState<PIXI.Application | null>(null);
-  const [model, setModel] = useState<Live2DModel | null>(null);
+  const [model, setModel] = useState<any>(null);
+  const [parameterManager, setParameterManager] = useState<Live2DParameterManager | null>(null);
+  const resourceGuard = useRef(new ResourceGuard()).current;
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadStage, setLoadStage] = useState<string>('idle');
+  const [fallbackUsed, setFallbackUsed] = useState(false);
 
   const {
     isSpeaking,
-    currentViseme,
-    setLive2dState
+    currentViseme
   } = useStore();
 
-  // Initialize PIXI App
+  // Initialize PIXI Application
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const pixiApp = new PIXI.Application({
-      view: canvasRef.current,
-      autoStart: true,
-      resizeTo: canvasRef.current.parentElement as HTMLElement,
-      backgroundAlpha: 0,
-    });
+    try {
+      const pixiApp = new PIXI.Application({
+        view: canvasRef.current,
+        autoStart: true,
+        resizeTo: canvasRef.current.parentElement as HTMLElement,
+        backgroundAlpha: 0,
+      });
 
-    setApp(pixiApp);
+      setApp(pixiApp);
+      setLoadStage('app_initialized');
 
-    return () => {
-      pixiApp.destroy(true, { children: true });
-    };
+      return () => {
+        try {
+          pixiApp.destroy(true, { children: true });
+        } catch (error) {
+          console.warn('[Live2D] Error destroying PIXI app:', error);
+        }
+      };
+    } catch (error) {
+      console.error('[Live2D] Failed to initialize PIXI:', error);
+      setLoadError('Failed to initialize graphics engine');
+      setLoadStage('app_init_failed');
+    }
   }, []);
 
-  // Load Model
+  // Load Live2D Model with defensive patterns
   useEffect(() => {
     if (!app || !modelPath) return;
 
     let mounted = true;
+    setLoadError(null);
+    setLoadStage('starting');
+    setFallbackUsed(false);
 
-    async function load() {
+    const load = async () => {
       try {
-        console.log('Loading Live2D model from:', modelPath);
-        // Ensure path is correct relative to public
-        // If modelPath is "./models/...", and we served public, use "/models/..."
-        const cleanPath = modelPath.replace('./', '/');
-
-        const loadedModel = await Live2DModel.from(cleanPath);
+        console.log('[Live2D] Starting model load:', modelPath);
+        
+        const result = await Live2DModelLoader.loadWithRetry(
+          modelPath, 
+          app,
+          (stage) => {
+            if (mounted) {
+              setLoadStage(stage);
+              console.log('[Live2D] Loading stage:', stage);
+            }
+          }
+        );
 
         if (!mounted) return;
 
-        // Auto fitting
-        const scale = Math.min(
-          app!.view.width / loadedModel.width,
-          app!.view.height / loadedModel.height
-        ) * 0.8;
-
-        loadedModel.scale.set(scale);
-        loadedModel.anchor.set(0.5, 0.5);
-        loadedModel.position.set(app!.view.width / 2, app!.view.height / 2 + (loadedModel.height * scale * 0.1));
-
-        // Interactions
-        loadedModel.on('hit', (hitAreas) => {
-          if (hitAreas.includes('Body')) {
-            loadedModel.motion('TapBody');
-            loadedModel.expression('smile');
+        if (result.success && result.model) {
+          const loadedModel = result.model;
+          
+          // Calculate scale safely
+          let scale = 0.5; // Default fallback
+          if (loadedModel.width > 0 && loadedModel.height > 0) {
+            scale = Math.min(
+              app.view.width / loadedModel.width,
+              app.view.height / loadedModel.height
+            ) * 0.8;
           }
-        });
 
-        app!.stage.addChild(loadedModel);
-        setModel(loadedModel);
-        console.log('Model loaded successfully');
+          loadedModel.scale.set(scale);
+          loadedModel.anchor.set(0.5, 0.5);
+          loadedModel.position.set(
+            app.view.width / 2, 
+            app.view.height / 2 + (loadedModel.height * scale * 0.1)
+          );
 
+          // Setup interactions
+          loadedModel.on('hit', (hitAreas: any) => {
+            if (hitAreas.includes('Body')) {
+              loadedModel.motion('TapBody');
+              loadedModel.expression('smile');
+            }
+          });
+
+          app.stage.addChild(loadedModel);
+          setModel(loadedModel);
+          
+          // Initialize parameter manager for safe lip-sync
+          const paramManager = new Live2DParameterManager(loadedModel);
+          setParameterManager(paramManager);
+          
+          // Track resources
+          resourceGuard.trackEventListener(loadedModel, 'hit', (hitAreas: any) => {
+            if (hitAreas.includes('Body')) {
+              loadedModel.motion('TapBody');
+              loadedModel.expression('smile');
+            }
+          });
+          
+          setFallbackUsed(result.fallbackUsed || false);
+          setLoadStage('complete');
+          
+          if (result.fallbackUsed) {
+            console.warn('[Live2D] Using fallback model');
+          } else {
+            console.log('[Live2D] Model loaded successfully');
+          }
+        } else {
+          setLoadError(result.error || 'Unknown loading error');
+          setLoadStage('failed');
+        }
       } catch (error) {
-        console.error('Failed to load Live2D model:', error);
+        console.error('[Live2D] Unexpected error during load:', error);
+        if (mounted) {
+          setLoadError('Unexpected error loading character');
+          setLoadStage('error');
+        }
       }
-    }
+    };
 
     load();
 
     return () => {
       mounted = false;
+      
+      // Cleanup parameter manager
+      if (parameterManager) {
+        parameterManager.markDestroyed();
+      }
+      
+      // Cleanup all tracked resources
+      resourceGuard.cleanup();
+      
       if (model) {
-        app.stage.removeChild(model);
-        model.destroy();
+        try {
+          app.stage.removeChild(model);
+          model.destroy();
+        } catch (error) {
+          console.warn('[Live2D] Error cleaning up model:', error);
+        }
       }
     };
-  }, [app, modelPath]);
+  }, [app, modelPath, parameterManager, resourceGuard]);
 
-  // Handle LipSync (Visemes)
+  // Handle lip-sync with parameter manager
   useEffect(() => {
-    if (!model) return;
-
-    // Mapping viseme (0-20 approx) to Live2D Parameters
-    // Standard param: ParamMouthOpenY
-    // Viseme 0 = closed, High = open.
-
-    // Simple mapping: if speaking, open mouth based on viseme value
-    // Viseme map used in backend: 0 (silence) to 16 (h).
-    // Normalize 0-16 to 0-1 range for ParamMouthOpenY
+    if (!parameterManager) return;
 
     if (isSpeaking) {
-      const value = Math.min(currentViseme / 10, 1.0); // Rough scaling
-
-      // This needs to be applied every frame, or updating core param
-      // pixi-live2d-display handles internal updates, but we can override parameters.
-      // However, it's best done in a ticker/update loop.
-      // For simplicity here, we just set it directly, but it might be overwritten by motion.
-
-      // Better approach: use internal motion manager or directly set parameter
-      try {
-        const coreModel = model.internalModel.coreModel;
-        // setParameterValueById is standard Cubism SDK
-        // model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', value);
-        // pixi-live2d-display wrapper:
-        // model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', value);
-
-        // Actually, for continuous update, we should hook into the ticker.
-        // But React useEffect updates on `currentViseme` change.
-        // currentViseme changes rapidly (from TTS service).
-
-        // We need to ensure we can set the parameter.
-        // Note: 'ParamMouthOpenY' is standard. Some models use different IDs.
-
-        // Pixi-live2d-display exposes parameters via valid accessors usually?
-        // model.internalModel.coreModel is the raw pointer.
-
-        // A safer ID-agnostic way often used:
-        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', value);
-      } catch (e) {
-        // Ignore if model not ready or param missing
+      const value = Math.min(currentViseme / 10, 1.0);
+      const success = parameterManager.setMouthOpen(value);
+      
+      if (!success && currentViseme > 0) {
+        // Model doesn't support mouth animation - log once
+        console.log('[Live2D] Model does not support mouth animation');
       }
     } else {
-      // Close mouth
-      if (model && model.internalModel && model.internalModel.coreModel) {
-        try {
-          model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
-        } catch (e) { }
-      }
+      // Close mouth when not speaking
+      parameterManager.setMouthOpen(0);
     }
+  }, [currentViseme, isSpeaking, parameterManager]);
 
-  }, [currentViseme, isSpeaking, model]);
-
-  // Resize handler
+  // Handle resize
   useEffect(() => {
     if (!app || !model) return;
+    
     const resize = () => {
-      if (!canvasRef.current) return;
-      // App resizeTo handles canvas size
-      // We need to re-center model
-      const scale = Math.min(
-        app.renderer.width / model.width,
-        app.renderer.height / model.height
-      ) * 0.8;
-      model.scale.set(scale);
-      model.position.set(app.renderer.width / 2, app.renderer.height / 2 + (model.height * scale * 0.1));
+      if (!canvasRef.current || model.width <= 0 || model.height <= 0) return;
+      
+      try {
+        const scale = Math.min(
+          app.renderer.width / model.width,
+          app.renderer.height / model.height
+        ) * 0.8;
+        
+        model.scale.set(scale);
+        model.position.set(
+          app.renderer.width / 2, 
+          app.renderer.height / 2 + (model.height * scale * 0.1)
+        );
+      } catch (error) {
+        console.warn('[Live2D] Resize error:', error);
+      }
     };
 
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, [app, model]);
 
+  // Render error state
+  if (loadError) {
+    return (
+      <div className="live2d-error-container">
+        <div className="live2d-error-content">
+          <h3>Character Loading Failed</h3>
+          <p className="error-message">{loadError}</p>
+          <p className="error-stage">Stage: {loadStage}</p>
+          <button 
+            className="retry-button"
+            onClick={() => window.location.reload()}
+          >
+            🔄 Retry Loading
+          </button>
+          <p className="error-hint">
+            If the problem persists, check that the model files exist at:<br/>
+            <code>{modelPath}</code>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render loading state
+  if (!model) {
+    return (
+      <div className="live2d-loading-container">
+        <div className="live2d-loading-content">
+          <div className="spinner"></div>
+          <p className="loading-text">Loading Character...</p>
+          <p className="loading-stage">{getStageDisplayText(loadStage)}</p>
+          {loadStage.includes('retry') && (
+            <p className="loading-retry">Retrying...</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Render success state (with fallback warning if needed)
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        width: '100%',
-        height: '100%',
-      }}
-    />
+    <div className="live2d-container">
+      {fallbackUsed && (
+        <div className="fallback-warning">
+          ⚠️ Using placeholder character
+        </div>
+      )}
+      <canvas
+        ref={canvasRef}
+        className="live2d-canvas"
+        style={{
+          width: '100%',
+          height: '100%',
+        }}
+      />
+    </div>
   );
 }
 
-export default Live2DCanvas;
-=======
-import { Live2DModel } from 'pixi-live2d-display'
-import * as PIXI from 'pixi.js'
-import { useEffect, useRef } from 'react'
-import config from '../../config.json'
-
-type Props = { modelPath?: string; visemes?: Array<{ time: number; value: number; duration: number }> }
-
-export function Live2DCanvas({ modelPath, visemes }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const appRef = useRef<PIXI.Application | null>(null)
-  const modelRef = useRef<any>(null)
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const app = new PIXI.Application({
-      backgroundAlpha: 0,
-      resizeTo: container
-    })
-    container.appendChild(app.view as unknown as Node)
-    appRef.current = app
-
-    const loadModel = async () => {
-      const model = await Live2DModel.from(modelPath ?? `${config.live2d.modelPath}${config.live2d.defaultModel}/${config.live2d.defaultModel}.model3.json`)
-      model.scale.set(config.live2d.scale)
-      model.anchor.set(0.5, 0.5)
-      model.position.set(app.renderer.width / 2, app.renderer.height * 0.9)
-      app.stage.addChild(model)
-      modelRef.current = model
-    }
-
-    loadModel()
-
-    const handleResize = () => {
-      if (!modelRef.current || !app.renderer) return
-      modelRef.current.position.set(app.renderer.width / 2, app.renderer.height * 0.9)
-    }
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      app.destroy(true, { children: true })
-    }
-  }, [modelPath])
-
-  useEffect(() => {
-    if (!visemes || !config.live2d.lipSyncEnabled) return
-    const model = modelRef.current as any
-    if (!model) return
-
-    let cancelled = false
-    const start = performance.now()
-
-    const step = () => {
-      if (cancelled) return
-      const elapsed = (performance.now() - start) / 1000
-      const current = visemes.find((v) => elapsed >= v.time && elapsed <= v.time + v.duration)
-      if (current) {
-        model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', current.value / 15)
-      }
-      requestAnimationFrame(step)
-    }
-    step()
-    return () => {
-      cancelled = true
-    }
-  }, [visemes])
-
-  return <div style={{ width: '100%', height: '100%' }} ref={containerRef} />
+// Helper function to get user-friendly stage text
+function getStageDisplayText(stage: string): string {
+  const stageMap: Record<string, string> = {
+    'idle': 'Initializing...',
+    'starting': 'Preparing...',
+    'validating': 'Validating path...',
+    'loading_attempt_1': 'Loading model (1/3)...',
+    'loading_attempt_2': 'Loading model (2/3)...',
+    'loading_attempt_3': 'Loading model (3/3)...',
+    'retrying_in_1000ms': 'Retrying...',
+    'retrying_in_2000ms': 'Retrying...',
+    'retrying_in_3000ms': 'Retrying...',
+    'loading_fallback': 'Loading fallback model...',
+    'success': 'Finalizing...',
+    'complete': 'Ready!',
+    'failed': 'Failed to load',
+    'error': 'Error occurred'
+  };
+  
+  return stageMap[stage] || stage;
 }
 
-export default Live2DCanvas
->>>>>>> ff6ad8ba64ecdfc7321d5982b49d420195c10bd4
+export default Live2DCanvas;
