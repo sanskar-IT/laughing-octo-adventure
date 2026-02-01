@@ -94,23 +94,83 @@ async def check_rate_limit(
 
 async def get_current_user(
     request: Request,
+    settings: Annotated[Settings, Depends(get_settings_dep)] = None
 ) -> Optional[dict]:
     """
-    Get current user from request (placeholder for JWT auth).
-    For local-first app, returns a default user.
+    Get current user from JWT token.
+    
+    For local-first app, allows unauthenticated access in development mode
+    when no token is provided. When a token is provided, it must be valid.
     
     Args:
         request: FastAPI request
+        settings: Application settings
         
     Returns:
-        User dictionary or None
+        User dictionary with authentication status
+        
+    Raises:
+        HTTPException: If token is invalid or expired
     """
-    # For local-first application, we use a default local user
-    # In production, this would validate JWT tokens
-    return {
-        "username": "local_user",
-        "is_authenticated": True
-    }
+    from jose import JWTError, jwt
+    
+    if settings is None:
+        settings = get_settings()
+    
+    auth_header = request.headers.get("Authorization")
+    
+    # For local-first application in development, allow unauthenticated access
+    if settings.app.environment == "development" and not auth_header:
+        return {
+            "username": "local_user",
+            "is_authenticated": True,
+            "auth_type": "development"
+        }
+    
+    # If no auth header in production, deny access
+    if not auth_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Validate Bearer token format
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication header format",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    token = auth_header.split(" ")[1]
+    
+    try:
+        payload = jwt.decode(
+            token,
+            settings.security.jwt_secret,
+            algorithms=["HS256"]
+        )
+        username = payload.get("sub")
+        
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid token payload"
+            )
+        
+        return {
+            "username": username,
+            "is_authenticated": True,
+            "auth_type": "jwt"
+        }
+        
+    except JWTError as e:
+        logger.warning(f"JWT validation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or expired authentication token"
+        )
 
 
 async def validate_character_id_param(character_id: str) -> str:

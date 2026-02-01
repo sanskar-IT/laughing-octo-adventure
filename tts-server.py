@@ -88,6 +88,15 @@ app.add_middleware(
 )
 
 
+# Startup event to launch background cleanup task
+@app.on_event("startup")
+async def start_background_tasks():
+    """Start background tasks on application startup."""
+    # Start rate limit cleanup task to prevent memory leaks
+    asyncio.create_task(cleanup_stale_rate_limits())
+    logger.info("Background rate limit cleanup task started")
+
+
 # Pydantic models for request/response validation
 class TTSRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH, description="Text to synthesize")
@@ -128,10 +137,45 @@ async def check_rate_limit_async(client_ip: str) -> tuple[bool, Optional[str]]:
         return True, None
 
 
+async def cleanup_stale_rate_limits():
+    """
+    Background task to clean up stale IP entries from rate limiting storage.
+    Removes entries that have been inactive for more than 60 seconds.
+    This prevents memory leaks from accumulating IP addresses.
+    """
+    while True:
+        await asyncio.sleep(60)  # Run every 60 seconds
+        try:
+            now = datetime.now()
+            stale_threshold = now - timedelta(seconds=RATE_LIMIT_WINDOW)
+            
+            # Find IPs with no recent requests
+            stale_ips = [
+                ip for ip, timestamps in list(rate_limit_storage.items())
+                if not timestamps or all(t < stale_threshold for t in timestamps)
+            ]
+            
+            # Clean up stale entries
+            for ip in stale_ips:
+                if ip in rate_limit_storage:
+                    del rate_limit_storage[ip]
+                if ip in rate_limit_locks:
+                    del rate_limit_locks[ip]
+            
+            if stale_ips:
+                logger.debug(f"Cleaned {len(stale_ips)} stale rate limit entries")
+                
+        except Exception as e:
+            logger.error(f"Error in rate limit cleanup: {e}")
+
+
 def validate_text_sync(text: str) -> tuple[bool, str]:
     """
     Synchronous text validation (CPU-bound, minimal).
     Returns (is_valid, result_or_error_message).
+    
+    Security: Only blocks dangerous HTML/shell injection characters.
+    Preserves linguistic punctuation like apostrophes and quotes.
     """
     if not text or not isinstance(text, str):
         return False, "Text is required and must be a string"
@@ -139,13 +183,14 @@ def validate_text_sync(text: str) -> tuple[bool, str]:
     if len(text) > MAX_TEXT_LENGTH:
         return False, f"Text too long (max {MAX_TEXT_LENGTH} characters)"
     
-    # Remove potentially dangerous characters
+    # Only block dangerous HTML/shell characters: < > `
+    # Preserve apostrophes (') and quotes (") for natural language
     import re
-    cleaned = re.sub(r'[<>"\']', '', text)
-    if len(cleaned) != len(text):
-        return False, "Text contains invalid characters"
+    dangerous_chars = re.compile(r'[<>`]')
+    if dangerous_chars.search(text):
+        return False, "Text contains potentially dangerous characters (< > `)"
     
-    return True, cleaned
+    return True, text
 
 
 async def validate_text_async(text: str) -> tuple[bool, str]:
@@ -489,13 +534,15 @@ async def list_voices():
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global error handler for uncaught exceptions."""
+    # Log full error details internally
     logger.error(f"Global error: {exc}", exc_info=True)
+    
+    # Return generic message to client - do not expose internal details
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "success": False,
             "error": "Internal server error",
-            "detail": str(exc),
             "timestamp": datetime.now().isoformat()
         }
     )
