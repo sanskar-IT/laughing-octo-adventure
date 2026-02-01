@@ -8,17 +8,14 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "lint:python": "python -m flake8 backend_fastapi/ tts-server.py --max-line-length=100 --extend-ignore=E203,W503",
+    "lint:python": "python -m flake8 backend_fastapi/ --max-line-length=100 --extend-ignore=E203,W503",
     "start:backend": "python -m backend_fastapi.main",
-    "start:tts": "python tts-server.py",
-    "setup:tts": "setup-tts-server.bat",
-    "start:tts:async": "start-tts-server.bat",
-    "test:tts": "python test_tts_async.py",
-    "install:all": "npm install && pip install -r backend_fastapi/requirements.txt -r tts-server-requirements.txt",
+    "test:backend": "python -m pytest backend_fastapi/ -v --tb=short",
+    "install:all": "npm install && pip install -r backend_fastapi/requirements.txt",
     "install:backend": "pip install -r backend_fastapi/requirements.txt",
     "prepare": "husky install && npm run setup:secrets",
     "setup:secrets": "bash scripts/setup-secrets.sh || echo 'Git-secrets setup skipped on Windows'",
-    "start": "concurrently \"npm run start:backend\" \"npm run start:tts\" \"npm run dev\""
+    "start": "concurrently \"npm run start:backend\" \"npm run dev\""
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.0.1",

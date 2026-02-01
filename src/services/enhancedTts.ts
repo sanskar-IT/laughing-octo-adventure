@@ -14,7 +14,7 @@ interface VisemeData {
 class EnhancedTTSService {
   private isInitialized: boolean = false;
   private audioContext: AudioContext | null = null;
-  private baseUrl: string = 'http://localhost:8000';
+  private baseUrl: string = 'http://localhost:3000/api/tts';
   private activeSource: AudioBufferSourceNode | null = null;
   private animationFrameId: number | null = null;
   private startTime: number = 0;
@@ -46,7 +46,7 @@ class EnhancedTTSService {
 
         // Convert base64 to AudioBuffer
         const audioBuffer = await this.createAudioBuffer(audioBase64);
-        
+
         // Process visemes for smooth synchronization
         const processedVisemes = this.processVisemes(visemes, audioBuffer.duration);
 
@@ -54,7 +54,7 @@ class EnhancedTTSService {
         await this.playSynchronized(audioBuffer, processedVisemes, onViseme);
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('TTS speak error:', error);
@@ -69,14 +69,14 @@ class EnhancedTTSService {
     for (let i = 0; i < len; i++) {
       bytes[i] = binaryString.charCodeAt(i);
     }
-    
+
     if (!this.audioContext) throw new Error('AudioContext not initialized');
     return await this.audioContext.decodeAudioData(bytes.buffer);
   }
 
-  private processVisemes(visemes: any[], audioDuration: number): VisemeFrame[] {
+  private processVisemes(visemes: any[], _audioDuration?: number): VisemeFrame[] {
     const processed: VisemeFrame[] = [];
-    
+
     for (let i = 0; i < visemes.length; i++) {
       const viseme = visemes[i];
       processed.push({
@@ -85,7 +85,7 @@ class EnhancedTTSService {
         duration: viseme.duration || 0.1
       });
     }
-    
+
     return processed;
   }
 
@@ -107,29 +107,29 @@ class EnhancedTTSService {
     this.activeSource.start(0);
 
     let currentVisemeIndex = 0;
-    
+
     return new Promise<void>((resolve) => {
       const updateViseme = () => {
         if (!this.isPlaying) return;
 
-        const currentTime = this.audioContext.currentTime - this.startTime;
-        
+        const currentTime = (this.audioContext?.currentTime ?? 0) - this.startTime;
+
         // Find current viseme frame
-        while (currentVisemeIndex < visemeFrames.length && 
-               currentTime >= visemeFrames[currentVisemeIndex].time) {
-          
+        while (currentVisemeIndex < visemeFrames.length &&
+          currentTime >= visemeFrames[currentVisemeIndex].time) {
+
           const visemeFrame = visemeFrames[currentVisemeIndex];
-          
+
           if (onViseme) {
             // Convert viseme value (0-16) to intensity (0-1)
             const intensity = Math.min(1.0, visemeFrame.value / 10);
-            
+
             onViseme({
               value: visemeFrame.value,
               intensity
             });
           }
-          
+
           currentVisemeIndex++;
         }
 
@@ -150,7 +150,7 @@ class EnhancedTTSService {
 
   private cleanup(): void {
     this.isPlaying = false;
-    
+
     if (this.activeSource) {
       try {
         this.activeSource.stop();
@@ -160,21 +160,26 @@ class EnhancedTTSService {
         console.warn('Error cleaning up audio source:', error);
       }
     }
-    
+
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
   }
 
+  // Public method to stop playback
+  stop(): void {
+    this.cleanup();
+  }
+
   shutdown(): void {
     this.cleanup();
-    
+
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
       this.audioContext = null;
     }
-    
+
     this.isInitialized = false;
   }
 

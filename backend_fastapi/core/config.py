@@ -32,10 +32,12 @@ class LLMSettings(BaseSettings):
 
 class TTSSettings(BaseSettings):
     """TTS Server Configuration"""
+    engine: str = Field(default="edge-tts", description="TTS engine: 'piper' or 'edge-tts'")
     host: str = Field(default="localhost")
-    port: int = Field(default=8000, ge=1, le=65535)
+    port: int = Field(default=3000, ge=1, le=65535)  # Now part of unified backend
     voice_id: str = Field(default="en-US-AriaNeural")
-    sample_rate: int = Field(default=44100)
+    sample_rate: int = Field(default=22050)
+    voices_dir: str = Field(default="./data/voices", description="Directory for voice profiles")
     
     model_config = SettingsConfigDict(
         env_prefix="TTS_",
@@ -61,9 +63,9 @@ class MemorySettings(BaseSettings):
 
 class SecuritySettings(BaseSettings):
     """Security Configuration"""
-    jwt_secret: str = Field(default="", description="JWT Secret - must be set in production")
+    jwt_secret: str = Field(default="", description="JWT Secret - MUST be set in production")
     allowed_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://127.0.0.1:5173"]
+        default=["http://localhost:5173", "http://127.0.0.1:5173", "tauri://localhost"]
     )
     enforce_localhost: bool = Field(default=True)
     block_telemetry: bool = Field(default=True)
@@ -85,9 +87,21 @@ class SecuritySettings(BaseSettings):
     @field_validator("jwt_secret", mode="after")
     @classmethod
     def validate_jwt_secret(cls, v):
-        if not v or v == "your_secure_64_char_hex_string_here":
+        """Validate JWT secret - MUST be set in production environment."""
+        env = os.getenv("APP_ENVIRONMENT", "development")
+        placeholder = "your_secure_64_char_hex_string_here"
+        
+        if env == "production":
+            if not v or v == placeholder:
+                raise ValueError(
+                    "CRITICAL: JWT_SECRET must be set in production environment! "
+                    "Set JWT_SECRET in your .env file with a secure 64-character hex string."
+                )
+        elif not v or v == placeholder:
+            # Development: generate a random secret
             import secrets
             return secrets.token_hex(32)
+        
         return v
 
 
@@ -180,7 +194,7 @@ class Settings(BaseSettings):
             ),
             security=SecuritySettings(
                 jwt_secret=os.getenv("JWT_SECRET", ""),
-                allowed_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(","),
+                allowed_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,tauri://localhost").split(","),
                 enforce_localhost=privacy_config.get("enforceLocalhost", True),
                 block_telemetry=privacy_config.get("blockTelemetry", True)
             )

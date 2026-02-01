@@ -32,3 +32,7 @@ httpx>=0.26.0  # For testing
 
 # Production
 gunicorn>=21.2.0
+
+# TTS (Text-to-Speech)
+edge-tts>=6.1.9  # Online TTS (Microsoft Edge, always available)
+# piper-tts>=1.0.0  # Offline TTS (Optional - uncomment for offline support)

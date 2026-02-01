@@ -37,7 +37,7 @@ interface SpeakOptions {
 
 class DefensiveTTSService {
   private isInitialized = false;
-  private baseUrl = 'http://localhost:8000';
+  private baseUrl = 'http://localhost:3000/api/tts';
   private audioManager: AudioResilienceManager;
   private resourceGuard: ResourceGuard;
 
@@ -52,12 +52,12 @@ class DefensiveTTSService {
   async initialize(): Promise<boolean> {
     try {
       const result = await this.audioManager.initialize();
-      
+
       if (result.requiresUserInteraction) {
         // Audio will work after user interaction
         console.log('[TTS] Audio initialized, waiting for user interaction');
       }
-      
+
       this.isInitialized = result.success;
       return result.success;
     } catch (error) {
@@ -89,7 +89,7 @@ class DefensiveTTSService {
 
     // Validate input before anything else
     const validation = TTSContentValidator.validate(text);
-    
+
     if (!validation.valid) {
       console.warn('[TTS] Content validation failed:', validation.error);
       onError?.(validation.error || 'Invalid TTS input');
@@ -149,7 +149,7 @@ class DefensiveTTSService {
     }
 
     // Fetch with streaming
-    const response = await fetch(`${this.baseUrl}/generate`, {
+    const response = await fetch(`${this.baseUrl}/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, stream: true }),
@@ -262,7 +262,7 @@ class DefensiveTTSService {
 
     // Play
     const playResult = await this.audioManager.playAudioSafely(bytes.buffer);
-    
+
     if (!playResult.success) {
       throw new Error(playResult.error || 'Playback failed');
     }
@@ -282,7 +282,7 @@ class DefensiveTTSService {
    */
   async generateVisemes(text: string): Promise<VisemeData[]> {
     try {
-      const response = await axios.post(`${this.baseUrl}/generate-visemes`, { text });
+      const response = await axios.post(`${this.baseUrl}/visemes`, { text });
       if (response.data.success) {
         return response.data.visemes;
       }

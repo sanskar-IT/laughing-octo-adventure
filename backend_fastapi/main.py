@@ -11,11 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend_fastapi.api.routes import chat, characters, models
+from backend_fastapi.api.routes import chat, characters, models, tts
 from backend_fastapi.core.config import get_settings
 from backend_fastapi.core.security import get_csp_headers
 from backend_fastapi.services.litellm_service import get_litellm_service
 from backend_fastapi.services.character_service import get_character_manager
+from backend_fastapi.services.tts_service import get_tts_service
 from backend_fastapi.utils.logger import get_logger, log_error
 
 logger = get_logger("main")
@@ -36,6 +37,14 @@ async def lifespan(app: FastAPI):
     # Initialize services
     llm_service = get_litellm_service()
     character_manager = get_character_manager()
+    tts_service = get_tts_service()
+    
+    # Initialize TTS engine
+    tts_initialized = await tts_service.initialize()
+    if tts_initialized:
+        logger.info(f"TTS Engine: {tts_service.engine}")
+    else:
+        logger.warning("TTS Engine failed to initialize")
     
     # Check LLM connection
     health = await llm_service.check_connection()
@@ -49,6 +58,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down AI Companion Backend")
     await llm_service.close()
+    await tts_service.close()
 
 
 # Create FastAPI application
@@ -111,6 +121,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(chat.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
 app.include_router(models.router, prefix="/api")
+app.include_router(tts.router, prefix="/api")
 
 
 # Root endpoints
@@ -129,6 +140,7 @@ async def root():
 async def health_check():
     """Detailed health check."""
     llm_service = get_litellm_service()
+    tts_service = get_tts_service()
     health = await llm_service.check_connection()
     
     return {
@@ -139,6 +151,10 @@ async def health_check():
             "provider": health["provider"],
             "connected": health["connected"],
             "type": health["type"]
+        },
+        "tts": {
+            "engine": tts_service.engine,
+            "sample_rate": tts_service.sample_rate
         },
         "timestamp": datetime.now().isoformat()
     }
