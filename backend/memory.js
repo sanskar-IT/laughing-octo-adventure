@@ -2,6 +2,7 @@ const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const path = require('path');
 const config = require('../config.json');
+const logger = require('./utils/logger');
 
 class MemoryManager {
     constructor() {
@@ -25,7 +26,7 @@ class MemoryManager {
         this.db.defaults({ conversations: [], messages: [] })
             .write();
 
-        console.log('Memory database initialized at:', this.dbPath);
+        logger.info('Memory database initialized', { path: this.dbPath });
     }
 
     async createConversation(title = 'New Conversation') {

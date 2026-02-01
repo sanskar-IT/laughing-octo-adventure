@@ -1,6 +1,6 @@
 {
   "name": "ai-companion",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Privacy-centric AI companion with Live2D integration",
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -8,21 +8,25 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "lint:python": "python -m flake8 backend/ tts-server.py tts-bridge/ --max-line-length=100 --extend-ignore=E203,W503",
-    "start:backend": "node backend/server.js",
+    "lint:python": "python -m flake8 backend_fastapi/ tts-server.py --max-line-length=100 --extend-ignore=E203,W503",
+    "start:backend": "python -m backend_fastapi.main",
+    "start:backend:legacy": "node backend/server.js",
     "start:tts": "python tts-server.py",
     "setup:tts": "setup-tts-server.bat",
     "start:tts:async": "start-tts-server.bat",
     "test:tts": "python test_tts_async.py",
-    "install:all": "npm install && pip install -r tts-server-requirements.txt",
+    "install:all": "npm install && pip install -r backend_fastapi/requirements.txt -r tts-server-requirements.txt",
+    "install:backend": "pip install -r backend_fastapi/requirements.txt",
     "prepare": "husky install && npm run setup:secrets",
-    "setup:secrets": "bash scripts/setup-secrets.sh || echo 'Git-secrets setup skipped on Windows'"
+    "setup:secrets": "bash scripts/setup-secrets.sh || echo 'Git-secrets setup skipped on Windows'",
+    "start": "concurrently \"npm run start:backend\" \"npm run start:tts\" \"npm run dev\""
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.0.1",
     "archiver": "^7.0.1",
     "axios": "^1.6.2",
     "chokidar": "^5.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
@@ -37,6 +41,8 @@
     "react-redux": "^9.0.4",
     "unzipper": "^0.12.3",
     "uuid": "^9.0.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {

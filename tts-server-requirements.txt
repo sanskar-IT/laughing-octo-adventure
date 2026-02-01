@@ -11,5 +11,9 @@ pydantic>=2.5.0
 # Async TTS (replaces pyttsx3)
 edge-tts>=6.1.0
 
+# Structured logging
+loguru>=0.7.0
+
 # Python version requirement
 # Requires Python 3.8+
+

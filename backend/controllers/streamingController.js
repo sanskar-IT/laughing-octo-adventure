@@ -2,6 +2,7 @@ const providerFactory = require('../providers/ProviderFactory');
 const RoleplayContextBuilder = require('../characters/RoleplayContextBuilder');
 const CharacterCardParser = require('../characters/CharacterCardParser');
 const { sanitizeChatMessage, sanitizeInput } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:5173',
@@ -41,7 +42,7 @@ class StreamingController {
     if (model) {
       model = sanitizeInput(model, 100);
       if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(model)) {
-        console.warn(`[Security] Invalid model format: ${model}`);
+        logger.warn('Invalid model format detected', { model });
         model = null;
       }
     }
@@ -49,7 +50,7 @@ class StreamingController {
     if (conversationId) {
       conversationId = sanitizeInput(conversationId, 50);
       if (!/^[a-zA-Z0-9_-]+$/.test(conversationId)) {
-        console.warn(`[Security] Invalid conversation ID format`);
+        logger.warn('Invalid conversation ID format', { conversationId });
         conversationId = 'default-session';
       }
     }
@@ -72,15 +73,15 @@ class StreamingController {
     };
 
     try {
-      console.log(`[StreamingController] Request received with model: ${model || 'default'}`);
+      logger.logStream('request', 'Stream request received', { model: model || 'default' });
 
       let characterInfo = null;
       if (character_card) {
         try {
           characterInfo = CharacterCardParser.parse(character_card);
-          console.log(`[StreamingController] Character loaded: ${characterInfo.name}`);
+          logger.info('Character loaded', { character: characterInfo.name });
         } catch (error) {
-          console.error('[StreamingController] Character parse error:', error);
+          logger.logError(error, { context: 'character_parse' });
           sendSSE('error', {
             type: 'character_parse_error',
             error: error.message,
@@ -94,9 +95,9 @@ class StreamingController {
       let provider;
       try {
         provider = await this.providerFactory.getActiveProvider();
-        console.log(`[StreamingController] Active provider: ${provider.getName()}`);
+        logger.info('Active provider selected', { provider: provider.getName() });
       } catch (error) {
-        console.error('[StreamingController] Provider error:', error);
+        logger.logError(error, { context: 'provider_init' });
         sendSSE('error', {
           type: 'provider_init_error',
           error: error.message,
@@ -108,7 +109,7 @@ class StreamingController {
 
       const isHealthy = await provider.checkConnection();
       if (!isHealthy.connected) {
-        console.log(`[StreamingController] Provider unhealthy: ${isHealthy.error}`);
+        logger.warn('Provider unhealthy', { error: isHealthy.error, type: isHealthy.type });
 
         if (isHealthy.type === 'local') {
           sendSSE('error', {
@@ -170,7 +171,7 @@ class StreamingController {
         chunkCount++;
 
         if (chunk.error) {
-          console.error(`[StreamingController] Stream error from ${provider.getName()}:`, chunk.error);
+          logger.logError(new Error(chunk.error), { provider: provider.getName(), context: 'stream' });
           sendSSE('error', {
             provider: chunk.provider,
             model: chunk.model,
@@ -212,7 +213,7 @@ class StreamingController {
       }
 
     } catch (error) {
-      console.error('[StreamingController] Fatal error:', error);
+      logger.logError(error, { context: 'streaming_fatal' });
       sendSSE('fatal_error', {
         error: error.message,
         stack: error.stack,
@@ -259,7 +260,7 @@ class StreamingController {
       });
 
     } catch (error) {
-      console.error('[StreamingController] Status error:', error);
+      logger.logError(error, { context: 'status_check' });
       res.status(500).json({
         status: 'error',
         error: error.message,
@@ -278,7 +279,7 @@ class StreamingController {
         });
       }
 
-      console.log(`[StreamingController] Switching to model: ${new_model}`);
+      logger.info('Switching model', { new_model });
 
       const success = await this.providerFactory.switchProvider(new_model);
 
@@ -298,7 +299,7 @@ class StreamingController {
       }
 
     } catch (error) {
-      console.error('[StreamingController] Switch error:', error);
+      logger.logError(error, { context: 'model_switch' });
       res.status(500).json({
         success: false,
         error: error.message,

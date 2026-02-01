@@ -788,7 +788,59 @@ Strict-Transport-Security: max-age=31536000
 
 ---
 
-## 🛠️ Development
+## � Logging
+
+The application uses structured file-based logging to keep the terminal clean for chat output while maintaining detailed logs for debugging.
+
+### Log Files
+
+| Service | Log Files | Location |
+|---------|-----------|----------|
+| **Node.js Backend** | `combined-YYYY-MM-DD.log`, `error-YYYY-MM-DD.log` | `logs/` |
+| **Python TTS** | `tts-server-YYYY-MM-DD.log`, `tts-error-YYYY-MM-DD.log` | `logs/` |
+
+### Features
+
+- **Daily rotation** with 14-day retention
+- **Structured JSON format** for easy parsing
+- **Separate error logs** for quick issue identification
+- **Clean terminal** - only startup banners shown
+
+### Node.js Usage (Winston)
+
+```javascript
+const logger = require('./utils/logger');
+
+logger.info('Request processed', { userId: '123' });
+logger.logError(error, { context: 'streaming' });
+logger.logRequest(req, 'Chat request received');
+```
+
+### Python Usage (Loguru)
+
+```python
+from loguru import logger
+
+logger.info("TTS request", text_length=100)
+logger.error("Generation failed", exc_info=True)
+```
+
+### Viewing Logs
+
+```bash
+# View all backend logs
+Get-Content logs/combined-*.log -Tail 50
+
+# View errors only
+Get-Content logs/error-*.log -Tail 20
+
+# View TTS logs
+Get-Content logs/tts-server-*.log -Tail 50
+```
+
+---
+
+## �🛠️ Development
 
 ### Project Structure
 
@@ -827,12 +879,19 @@ ai-companion/
 │   │   └── context_builder.py
 │   ├── memory/                   # Conversation memory
 │   │   └── memory_manager.py
-│   └── middleware/               # Auth & security
-│       └── auth.py
+│   ├── middleware/               # Auth & security
+│   │   └── auth.py
+│   └── utils/                    # Utilities
+│       └── logger.js             # Winston structured logger
 ├── tts-server.py                 # Python TTS HTTP server
 ├── tts-bridge/                   # TTS client library
 │   ├── tts_bridge.py
 │   └── requirements.txt
+├── logs/                         # Log files (auto-generated)
+│   ├── combined-YYYY-MM-DD.log   # All backend logs
+│   ├── error-YYYY-MM-DD.log      # Backend errors only
+│   ├── tts-server-YYYY-MM-DD.log # TTS logs
+│   └── tts-error-YYYY-MM-DD.log  # TTS errors only
 ├── public/                       # Static assets
 │   └── models/                   # Live2D model files
 ├── config.json                   # Application configuration

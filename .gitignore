@@ -17,5 +17,9 @@ __pycache__/
 *.pyc
 tts-bridge/__pycache__/
 
+# Logs directory
+logs/
+
 # Secrets
 .secrets.baseline
+

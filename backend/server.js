@@ -6,6 +6,7 @@ const path = require('path');
 const config = require('../config.json');
 const memoryManager = require('./memory');
 const StreamingController = require('./controllers/streamingController');
+const logger = require('./utils/logger');
 
 require('dotenv').config();
 
@@ -82,7 +83,7 @@ app.post('/api/chat', async (req, res) => {
 
   const apiMessages = finalMessages.length > 0 ? finalMessages : messages;
 
-  console.log(`Sending ${apiMessages.length} messages to LLM`);
+  logger.info(`Sending messages to LLM`, { messageCount: apiMessages.length });
 
   const messagesForStreaming = [{ role: 'user', content: lastUserMessage.content }];
 
@@ -95,9 +96,9 @@ app.post('/api/chat', async (req, res) => {
       };
 
       const mockRes = {
-        writeHead: () => {},
-        write: () => {},
-        end: () => {},
+        writeHead: () => { },
+        write: () => { },
+        end: () => { },
         json: (data) => {
           resolve(data);
         }
@@ -119,7 +120,7 @@ app.post('/api/chat', async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    console.error('Chat error:', error);
+    logger.logError(error, { endpoint: '/api/chat' });
     res.status(503).json({
       success: false,
       error: error.message || 'Unknown error occurred'
@@ -142,11 +143,13 @@ app.listen(PORT, () => {
 });
 
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  logger.info('SIGTERM received, shutting down gracefully');
+  console.log('Shutting down...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
+  logger.info('SIGINT received, shutting down gracefully');
+  console.log('Shutting down...');
   process.exit(0);
 });

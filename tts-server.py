@@ -10,19 +10,41 @@ from pydantic import BaseModel, Field
 from typing import AsyncGenerator, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
+from loguru import logger
 import asyncio
 import base64
 import json
-import logging
+import sys
+import os
 import edge_tts  # Async TTS library
 import uvicorn
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure Loguru for structured file logging
+# Remove default console handler to keep terminal clean
+logger.remove()
+
+# Ensure logs directory exists
+logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# Add file handler with rotation
+logger.add(
+    os.path.join(logs_dir, "tts-server-{time:YYYY-MM-DD}.log"),
+    rotation="1 day",
+    retention="14 days",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+    level="INFO",
+    serialize=False  # Set to True for JSON format
 )
-logger = logging.getLogger(__name__)
+
+# Add error-only file for quick error review
+logger.add(
+    os.path.join(logs_dir, "tts-error-{time:YYYY-MM-DD}.log"),
+    rotation="1 day",
+    retention="14 days",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+    level="ERROR"
+)
 
 # Configuration
 PORT = 8000
