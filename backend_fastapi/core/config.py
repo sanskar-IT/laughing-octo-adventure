@@ -62,10 +62,11 @@ class MemorySettings(BaseSettings):
 
 
 class SecuritySettings(BaseSettings):
-    """Security Configuration"""
-    jwt_secret: str = Field(default="", description="JWT Secret - MUST be set in production")
+    """Security Configuration - Production Hardened"""
+    jwt_secret: str = Field(default="", description="JWT Secret - MUST be set via environment variable")
     allowed_origins: list[str] = Field(
-        default=["http://localhost:5173", "http://127.0.0.1:5173", "tauri://localhost"]
+        default=["http://localhost:5173", "tauri://localhost"],
+        description="Strict CORS: Only Vite dev server and Tauri app allowed"
     )
     enforce_localhost: bool = Field(default=True)
     block_telemetry: bool = Field(default=True)
@@ -80,29 +81,56 @@ class SecuritySettings(BaseSettings):
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_origins(cls, v):
+        """Parse CORS origins - strictly validated."""
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+            origins = [origin.strip() for origin in v.split(",")]
+        else:
+            origins = v if v else []
+        
+        # Strictly allow only localhost:5173 and tauri://localhost
+        allowed_patterns = {"http://localhost:5173", "tauri://localhost"}
+        validated = [o for o in origins if o in allowed_patterns]
+        
+        if not validated:
+            # Default to secure values if none provided
+            return ["http://localhost:5173", "tauri://localhost"]
+        
+        return validated
     
     @field_validator("jwt_secret", mode="after")
     @classmethod
     def validate_jwt_secret(cls, v):
-        """Validate JWT secret - MUST be set in production environment."""
-        env = os.getenv("APP_ENVIRONMENT", "development")
+        """
+        STRICTLY enforce JWT_SECRET from environment variables.
+        Raises RuntimeError if not properly configured - the app will NOT start.
+        """
         placeholder = "your_secure_64_char_hex_string_here"
+        env_secret = os.getenv("JWT_SECRET", "")
         
-        if env == "production":
-            if not v or v == placeholder:
-                raise ValueError(
-                    "CRITICAL: JWT_SECRET must be set in production environment! "
-                    "Set JWT_SECRET in your .env file with a secure 64-character hex string."
-                )
-        elif not v or v == placeholder:
-            # Development: generate a random secret
-            import secrets
-            return secrets.token_hex(32)
+        # Check if JWT_SECRET was actually provided via environment
+        if not env_secret or env_secret == placeholder or len(env_secret) < 32:
+            raise RuntimeError(
+                "\n" + "=" * 70 + "\n"
+                "🚨 SECURITY CRITICAL: JWT_SECRET NOT CONFIGURED 🚨\n"
+                "=" * 70 + "\n"
+                "The application CANNOT start without a secure JWT_SECRET.\n\n"
+                "To fix this:\n"
+                "1. Generate a secure secret:\n"
+                "   python -c \"import secrets; print(secrets.token_hex(32))\"\n\n"
+                "2. Set in your .env file:\n"
+                "   JWT_SECRET=<your_64_character_hex_string>\n\n"
+                "3. Or set as environment variable:\n"
+                "   export JWT_SECRET=<your_64_character_hex_string>\n"
+                "=" * 70
+            )
         
-        return v
+        # Validate minimum security requirements
+        if len(env_secret) < 32:
+            raise RuntimeError(
+                "JWT_SECRET must be at least 32 characters (64 hex characters recommended)"
+            )
+        
+        return env_secret
 
 
 class AppSettings(BaseSettings):
@@ -194,7 +222,7 @@ class Settings(BaseSettings):
             ),
             security=SecuritySettings(
                 jwt_secret=os.getenv("JWT_SECRET", ""),
-                allowed_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,tauri://localhost").split(","),
+                allowed_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,tauri://localhost").split(","),
                 enforce_localhost=privacy_config.get("enforceLocalhost", True),
                 block_telemetry=privacy_config.get("blockTelemetry", True)
             )

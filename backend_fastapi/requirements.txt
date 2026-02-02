@@ -1,5 +1,7 @@
-# FastAPI Backend Requirements
-# Core
+# FastAPI Backend Requirements - Production Hardened
+# =================================================
+
+# Core Framework
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
@@ -28,11 +30,26 @@ aiofiles>=23.2.1
 # Development
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
-httpx>=0.26.0  # For testing
 
 # Production
 gunicorn>=21.2.0
 
-# TTS (Text-to-Speech)
-edge-tts>=6.1.9  # Online TTS (Microsoft Edge, always available)
-# piper-tts>=1.0.0  # Offline TTS (Optional - uncomment for offline support)
+# =================================================
+# TTS (Text-to-Speech) - Offline-First Support
+# =================================================
+
+# Online TTS (Microsoft Edge, always available)
+edge-tts>=6.1.9
+
+# Offline TTS with Voice Cloning (Coqui XTTS)
+# Note: This requires ~3GB for model download on first run
+# Uncomment to enable offline TTS with voice cloning:
+# TTS>=0.22.0
+
+# Lightweight Offline TTS (Piper)
+# Faster than Coqui but no voice cloning
+# Uncomment to enable:
+# piper-tts>=1.0.0
+
+# NumPy - Required for audio processing
+numpy>=1.24.0

@@ -16,7 +16,7 @@ interface AppState {
   live2dState: 'idle' | 'talking' | 'listening' | 'thinking';
   currentConversationId: string | null;
   connectionStatus: 'connected' | 'disconnected' | 'connecting';
-  
+
   addMessage: (role: 'user' | 'assistant', content: string) => void;
   setLoading: (loading: boolean) => void;
   setSpeaking: (speaking: boolean) => void;
@@ -28,7 +28,7 @@ interface AppState {
   initializeConversation: () => void;
 }
 
-export const useStore = create<AppState>((set, get) => ({
+export const useStore = create<AppState>((set) => ({
   messages: [],
   isLoading: false,
   isSpeaking: false,
@@ -36,7 +36,7 @@ export const useStore = create<AppState>((set, get) => ({
   live2dState: 'idle',
   currentConversationId: null,
   connectionStatus: 'disconnected',
-  
+
   addMessage: (role, content) => {
     const newMessage: Message = {
       id: uuidv4(),
@@ -48,18 +48,17 @@ export const useStore = create<AppState>((set, get) => ({
       messages: [...state.messages, newMessage]
     }));
   },
-  
+
   setLoading: (loading) => set({ isLoading: loading }),
   setSpeaking: (speaking) => set({ isSpeaking: speaking }),
   setViseme: (viseme) => set({ currentViseme: viseme }),
   setLive2dState: (state) => set({ live2dState: state }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setConversationId: (id) => set({ currentConversationId: id }),
-  
+
   clearMessages: () => set({ messages: [] }),
-  
+
   initializeConversation: () => {
-    const { initializeConversation } = get();
     const newId = uuidv4();
     set({ currentConversationId: newId, messages: [] });
   }
