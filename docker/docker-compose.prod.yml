@@ -1,0 +1,108 @@
+# AI Companion - Production Docker Compose Overrides
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # PRODUCTION BACKEND
+  # ==========================================
+  backend:
+    build:
+      context: ../backend_fastapi
+      dockerfile: ../docker/backend/Dockerfile
+      target: production
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=warning
+      - WORKERS=4
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # PRODUCTION TTS
+  # ==========================================
+  tts:
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # PRODUCTION NGINX (with SSL)
+  # ==========================================
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+      - "${NGINX_SSL_PORT:-8443}:443"
+    volumes:
+      - ../dist:/usr/share/nginx/html:ro
+      - nginx_logs:/var/log/nginx
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # DISABLE FRONTEND DEV SERVER IN PROD
+  # ==========================================
+  frontend:
+    profiles:
+      - never
+
+  # ==========================================
+  # OLLAMA PRODUCTION SETTINGS
+  # ==========================================
+  ollama:
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=30m
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 6G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

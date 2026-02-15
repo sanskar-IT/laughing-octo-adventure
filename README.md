@@ -415,6 +415,71 @@ The application will open automatically. Default ports:
 
 ---
 
+## 🐳 Docker Deployment (Recommended)
+
+The easiest way to deploy AI Companion is using Docker with full GPU support.
+
+### Prerequisites
+
+- [Docker Engine 20.10+](https://docs.docker.com/get-docker/)
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (for GPU acceleration)
+- NVIDIA GPU (RTX 4050 or better recommended)
+
+### Quick Deploy
+
+```bash
+# Clone repository
+git clone https://github.com/yourusername/ai-companion.git
+cd ai-companion
+
+# Deploy with one command
+cd docker
+./scripts/deploy.sh
+
+# Access at http://localhost:8080
+```
+
+### Hybrid LLM Setup
+
+The Docker deployment includes automatic hybrid LLM fallback:
+
+1. **Primary**: Local Ollama (qwen2.5:3b - 3B params, runs on RTX 4050)
+2. **Fallback**: Cloud providers (Groq → OpenRouter → OpenAI)
+
+Configure in `docker/.env`:
+```bash
+# Local LLM (GPU)
+PRIMARY_PROVIDER=ollama/qwen2.5:3b
+
+# Fallback chain
+FALLBACK_PROVIDERS=groq/llama-3.2-3b,openrouter/meta-llama/llama-3.2-3b-instruct
+
+# API keys (optional, for fallback)
+GROQ_API_KEY=your_key_here
+OPENROUTER_API_KEY=your_key_here
+```
+
+### Service Ports
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Backend | 3000 | FastAPI API gateway |
+| TTS | 4000 | Text-to-speech |
+| Ollama | 5000 | Local LLM (GPU) |
+| Frontend | 6000 | React dev server |
+| Nginx | 8080 | Production proxy |
+
+### Production Deploy
+
+```bash
+cd docker
+./scripts/deploy.sh --environment production
+```
+
+See [docker/README.md](docker/README.md) for detailed configuration.
+
+---
+
 ## 📚 API Documentation
 
 ### Authentication

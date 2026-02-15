@@ -1,0 +1,190 @@
+# AI Companion - Docker Compose Configuration
+# Hybrid LLM Deployment with RTX 4050 Support
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # OLLAMA - Local LLM Inference (GPU)
+  # ==========================================
+  ollama:
+    build:
+      context: ./ollama
+      dockerfile: Dockerfile
+    container_name: ai-companion-ollama
+    ports:
+      - "${OLLAMA_PORT:-5000}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ai-companion-network
+    restart: unless-stopped
+
+  # ==========================================
+  # TTS SERVICE - Text-to-Speech
+  # ==========================================
+  tts:
+    build:
+      context: ./tts
+      dockerfile: Dockerfile
+    container_name: ai-companion-tts
+    ports:
+      - "${TTS_PORT:-4000}:8000"
+    environment:
+      - TTS_HOST=0.0.0.0
+      - TTS_PORT=8000
+      - LOG_LEVEL=info
+    volumes:
+      - tts_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ai-companion-network
+    restart: unless-stopped
+
+  # ==========================================
+  # BACKEND - FastAPI Application
+  # ==========================================
+  backend:
+    build:
+      context: ../backend_fastapi
+      dockerfile: ../docker/backend/Dockerfile
+    container_name: ai-companion-backend
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - JWT_SECRET=${JWT_SECRET}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - TTS_BASE_URL=http://tts:8000
+      - PRIMARY_PROVIDER=${PRIMARY_PROVIDER:-ollama/qwen2.5:3b}
+      - FALLBACK_PROVIDERS=${FALLBACK_PROVIDERS:-}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DATABASE_URL=sqlite:///app/data/conversations.db
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8080}
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+      - ../characters:/app/characters:ro
+      - ../models:/app/models:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ai-companion-network
+    restart: unless-stopped
+
+  # ==========================================
+  # NGINX - Reverse Proxy & Static Files
+  # ==========================================
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: ai-companion-nginx
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    environment:
+      - BACKEND_URL=http://backend:3000
+      - FRONTEND_URL=http://frontend:6000
+    depends_on:
+      - backend
+    volumes:
+      - ../dist:/usr/share/nginx/html:ro
+      - nginx_logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ai-companion-network
+    restart: unless-stopped
+
+  # ==========================================
+  # FRONTEND BUILDER (Dev Mode Only)
+  # ==========================================
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/frontend/Dockerfile
+      target: development
+    container_name: ai-companion-frontend
+    ports:
+      - "${FRONTEND_PORT:-6000}:6000"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - VITE_TTS_URL=http://localhost:4000
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ../src:/app/src:ro
+      - ../public:/app/public:ro
+      - ../index.html:/app/index.html:ro
+      - ../vite.config.ts:/app/vite.config.ts:ro
+      - ../tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      - backend
+    networks:
+      - ai-companion-network
+    profiles:
+      - dev
+    restart: unless-stopped
+
+# ==========================================
+# NETWORKS
+# ==========================================
+networks:
+  ai-companion-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ==========================================
+# VOLUMES
+# ==========================================
+volumes:
+  ollama_data:
+    driver: local
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+  tts_logs:
+    driver: local
+  nginx_logs:
+    driver: local
