@@ -19,8 +19,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/data /app/logs /app/characters /app/models
+# Create non-root user and directories with proper ownership
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    mkdir -p /app/data /app/logs /app/characters /app/models && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # ==========================================
 # PRODUCTION STAGE

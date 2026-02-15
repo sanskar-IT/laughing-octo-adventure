@@ -4,6 +4,7 @@ Handles streaming chat with LLM and sentence-level TTS triggering.
 """
 
 import asyncio
+import json
 from datetime import datetime
 from typing import Any, AsyncGenerator
 
@@ -172,21 +173,23 @@ async def stream_chat(
             health = await llm_service.check_connection(model)
             
             if not health["connected"]:
-                yield f"event: error\ndata: {{\n"
-                yield f'  "type": "provider_offline",\n'
-                yield f'  "provider": "{health["provider"]}",\n'
-                yield f'  "error": "{health.get("error", "Provider unavailable")}",\n'
-                yield f'  "timestamp": "{datetime.now().isoformat()}"\n'
-                yield f"}}\n\n"
+                error_data = json.dumps({
+                    "type": "provider_offline",
+                    "provider": health["provider"],
+                    "error": health.get("error", "Provider unavailable"),
+                    "timestamp": datetime.now().isoformat()
+                })
+                yield f"event: error\ndata: {error_data}\n\n"
                 return
             
             # Send connection event
-            yield f"event: provider_connected\ndata: {{\n"
-            yield f'  "provider": "{health["provider"]}",\n'
-            yield f'  "type": "{health["type"]}",\n'
-            yield f'  "character": {f\'"{character_name}"\' if character_name else "null"},\n'
-            yield f'  "timestamp": "{datetime.now().isoformat()}"\n'
-            yield f"}}\n\n"
+            connected_data = json.dumps({
+                "provider": health["provider"],
+                "type": health["type"],
+                "character": character_name,
+                "timestamp": datetime.now().isoformat()
+            })
+            yield f"event: provider_connected\ndata: {connected_data}\n\n"
             
             # Create HTTP client for TTS
             http_client = httpx.AsyncClient() if request.enable_tts else None
@@ -225,32 +228,26 @@ async def stream_chat(
                             event_data["sentence_complete"] = True
                             event_data["sentence"] = chunk.get("sentence", "")
                         
-                        yield f"event: content\ndata: {{\n"
-                        for key, value in event_data.items():
-                            if isinstance(value, bool):
-                                yield f'  "{key}": {str(value).lower()},\n'
-                            elif isinstance(value, int):
-                                yield f'  "{key}": {value},\n'
-                            else:
-                                yield f'  "{key}": "{value}",\n'
-                        yield f"}}\n\n"
+                        yield f"event: content\ndata: {json.dumps(event_data)}\n\n"
                     
                     elif chunk["type"] == "done":
-                        yield f"event: done\ndata: {{\n"
-                        yield f'  "provider": "{chunk["provider"]}",\n'
-                        yield f'  "chunk_count": {chunk["chunk_count"]},\n'
-                        yield f'  "full_content": "{full_content.replace(chr(34), chr(92) + chr(34)).replace(chr(10), chr(92) + "n")}",\n'
-                        yield f'  "character": {f\'"{character_name}"\' if character_name else "null"},\n'
-                        yield f'  "conversation_id": "{request.conversation_id}",\n'
-                        yield f'  "timestamp": "{datetime.now().isoformat()}"\n'
-                        yield f"}}\n\n"
+                        done_data = json.dumps({
+                            "provider": chunk["provider"],
+                            "chunk_count": chunk["chunk_count"],
+                            "full_content": full_content,
+                            "character": character_name,
+                            "conversation_id": request.conversation_id,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        yield f"event: done\ndata: {done_data}\n\n"
                     
                     elif chunk["type"] == "error":
-                        yield f"event: error\ndata: {{\n"
-                        yield f'  "provider": "{chunk["provider"]}",\n'
-                        yield f'  "error": "{chunk["error"]}",\n'
-                        yield f'  "timestamp": "{datetime.now().isoformat()}"\n'
-                        yield f"}}\n\n"
+                        err_data = json.dumps({
+                            "provider": chunk["provider"],
+                            "error": chunk["error"],
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        yield f"event: error\ndata: {err_data}\n\n"
             
             finally:
                 if http_client:
@@ -258,10 +255,11 @@ async def stream_chat(
         
         except Exception as e:
             logger.exception(f"Stream error: {e}")
-            yield f"event: fatal_error\ndata: {{\n"
-            yield f'  "error": "{str(e)}",\n'
-            yield f'  "timestamp": "{datetime.now().isoformat()}"\n'
-            yield f"}}\n\n"
+            fatal_data = json.dumps({
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            })
+            yield f"event: fatal_error\ndata: {fatal_data}\n\n"
     
     return StreamingResponse(
         generate_sse(),

@@ -17,8 +17,11 @@ RUN mkdir -p /var/log/nginx /etc/nginx/ssl
 # ==========================================
 FROM base as development
 
-# Substitute environment variables and start nginx
-CMD ["/bin/sh", "-c", "envsubst '$BACKEND_URL $FRONTEND_URL' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"]
+# Copy nginx config directly (using Docker service names)
+RUN cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
 
 # ==========================================
 # PRODUCTION STAGE
@@ -28,9 +31,9 @@ FROM base as production
 # SSL configuration
 COPY ssl/ /etc/nginx/ssl/
 
-# Modify nginx.conf for SSL (this would be done via template or separate config)
-# For now, using the same config but with SSL port exposed
+# Copy nginx config directly
+RUN cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
 
 EXPOSE 80 443
 
-CMD ["/bin/sh", "-c", "envsubst '$BACKEND_URL $FRONTEND_URL' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"]
+CMD ["nginx", "-g", "daemon off;"]

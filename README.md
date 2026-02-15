@@ -55,13 +55,13 @@ flowchart TB
         Chub AI V2 Format]
     end
 
-    subgraph TTS["TTS Service (Python)"]
-        TTS_Server[TTS Server
-        FastAPI HTTP :8000]
+    subgraph TTS["TTS Service (Integrated)"]
+        TTS_Server[TTS Routes
+        /api/tts/*]
         Viseme[Viseme Generator
         Phoneme Mapping]
         AudioGen[Audio Synthesis
-        pyttsx3 / Coqui TTS]
+        Coqui XTTS / Piper / Edge-TTS]
     end
 
     subgraph Storage["Storage"]
@@ -322,7 +322,7 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # Install Python dependencies
-pip install fastapi uvicorn litellm pyttsx3 websockets pyaudio numpy python-multipart python-jose[cryptography] passlib[bcrypt]
+pip install -r backend_fastapi/requirements.txt
 ```
 
 ### Step 4: Configure Environment
@@ -367,20 +367,7 @@ node -e "console.log('JWT_SECRET=' + require('crypto').randomBytes(32).toString(
 
 You need to run three services simultaneously:
 
-#### Terminal 1: TTS Server
-
-```bash
-# Activate Python environment (if not already active)
-# Windows: venv\Scripts\activate
-# macOS/Linux: source venv/bin/activate
-
-# Start TTS server
-python tts-server.py
-
-# Output: Starting TTS Server on localhost:8000
-```
-
-#### Terminal 2: Ollama (LLM Provider)
+#### Terminal 1: Ollama (LLM Provider)
 
 ```bash
 # Install Ollama (if not installed)
@@ -395,22 +382,32 @@ ollama serve
 # Output: Listening on 127.0.0.1:11434
 ```
 
-#### Terminal 3: Tauri Development
+#### Terminal 2: FastAPI Backend (includes TTS)
+
+```bash
+# Activate Python environment
+# Windows: venv\Scripts\activate
+# macOS/Linux: source venv/bin/activate
+
+# Start the unified backend (API + TTS)
+uvicorn backend_fastapi.main:app --host 0.0.0.0 --port 3000 --reload
+
+# Output: Uvicorn running on http://0.0.0.0:3000
+```
+
+#### Terminal 3: Frontend Development
 
 ```bash
 # In project root
-npm run tauri dev
+npm run dev
 
-# This will:
-# 1. Start FastAPI backend on :3000
-# 2. Build React frontend
-# 3. Launch Tauri desktop window
+# Or with Tauri desktop wrapper:
+npm run tauri dev
 ```
 
-The application will open automatically. Default ports:
-- **Tauri App**: Auto-launched window
-- **FastAPI Backend**: http://localhost:3000
-- **TTS Server**: http://localhost:8000
+The application is available at default ports:
+- **Frontend Dev**: http://localhost:5173
+- **FastAPI Backend**: http://localhost:3000 (includes TTS at `/api/tts/*`)
 - **Ollama**: http://localhost:11434
 
 ---
@@ -612,7 +609,7 @@ eventSource.onmessage = (event) => {
 
 #### 3. System Status
 
-**Endpoint:** `GET /api/status`  
+**Endpoint:** `GET /health`  
 **Authentication:** None
 
 **Response:**
@@ -830,77 +827,66 @@ LOG_LEVEL=info
 
 | Feature | Implementation | Details |
 |---------|----------------|---------|
-| **Authentication** | JWT (JSON Web Tokens) | 24h expiration, secure secrets |
+| **Authentication** | JWT (JSON Web Tokens) | HS256, secure secrets via `python-jose` |
 | **Input Sanitization** | Regex filtering | XSS prevention, null byte removal |
 | **Prompt Injection Detection** | Pattern matching | 6 common injection patterns detected |
-| **Rate Limiting** | Token bucket | 100 requests per 15 min per IP |
-| **CORS** | Whitelist only | Explicit origin validation |
-| **CSP Headers** | Helmet.js | Strict content security policy |
+| **Rate Limiting** | Sliding window | Configurable per-IP limits via FastAPI deps |
+| **CORS** | Whitelist only | Strict origin validation in FastAPI middleware |
+| **CSP Headers** | FastAPI middleware + Nginx | Strict content security policy |
 | **Path Traversal** | Path resolution | All file paths validated |
 | **File Upload** | MIME validation | Whitelist extensions, size limits |
 | **ZIP Bomb Protection** | Extraction limits | 200MB max, 1000 files max |
+| **Non-root Containers** | Docker best practices | Backend & TTS run as `appuser` |
 
 ### Security Headers
 
-The application uses Helmet to set secure headers:
+The application sets security headers via FastAPI middleware and Nginx:
 
 ```
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cubism.live2d.com
+Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; ...
 X-Frame-Options: DENY
 X-Content-Type-Options: nosniff
-Strict-Transport-Security: max-age=31536000
+Referrer-Policy: strict-origin-when-cross-origin
 ```
 
 ---
 
-## � Logging
+## 📝 Logging
 
-The application uses structured file-based logging to keep the terminal clean for chat output while maintaining detailed logs for debugging.
+The application uses structured file-based logging via Python's `logging` module with custom formatters.
 
 ### Log Files
 
 | Service | Log Files | Location |
 |---------|-----------|----------|
-| **Node.js Backend** | `combined-YYYY-MM-DD.log`, `error-YYYY-MM-DD.log` | `logs/` |
-| **Python TTS** | `tts-server-YYYY-MM-DD.log`, `tts-error-YYYY-MM-DD.log` | `logs/` |
+| **FastAPI Backend** | `backend-YYYY-MM-DD.log` | `logs/` |
+| **TTS Service** | Included in backend logs | `logs/` |
 
 ### Features
 
 - **Daily rotation** with 14-day retention
-- **Structured JSON format** for easy parsing
+- **Structured format** for easy parsing
 - **Separate error logs** for quick issue identification
 - **Clean terminal** - only startup banners shown
 
-### Node.js Usage (Winston)
-
-```javascript
-const logger = require('./utils/logger');
-
-logger.info('Request processed', { userId: '123' });
-logger.logError(error, { context: 'streaming' });
-logger.logRequest(req, 'Chat request received');
-```
-
-### Python Usage (Loguru)
+### Usage
 
 ```python
-from loguru import logger
+from backend_fastapi.utils.logger import get_logger
 
-logger.info("TTS request", text_length=100)
+logger = get_logger("my_module")
+logger.info("Request processed")
 logger.error("Generation failed", exc_info=True)
 ```
 
 ### Viewing Logs
 
 ```bash
-# View all backend logs
-Get-Content logs/combined-*.log -Tail 50
+# Windows PowerShell
+Get-Content logs/backend-*.log -Tail 50
 
-# View errors only
-Get-Content logs/error-*.log -Tail 20
-
-# View TTS logs
-Get-Content logs/tts-server-*.log -Tail 50
+# macOS/Linux
+tail -50 logs/backend-*.log
 ```
 
 ---
@@ -911,7 +897,7 @@ Get-Content logs/tts-server-*.log -Tail 50
 
 ```
 ai-companion/
-├── src/                          # Frontend source
+├── src/                          # Frontend source (React + TypeScript)
 │   ├── components/               # React components
 │   │   ├── ChatOverlay.tsx
 │   │   ├── CharacterManager.tsx
@@ -921,46 +907,46 @@ ai-companion/
 │   │   ├── api.ts
 │   │   ├── streamingChatService.ts
 │   │   └── enhancedTts.ts
-│   ├── store/                    # State management
+│   ├── store/                    # State management (Zustand)
 │   │   └── useStore.ts
 │   └── App.tsx                   # Main application
 ├── src-tauri/                    # Tauri configuration (Rust)
 │   ├── src/
 │   │   └── main.rs               # Rust entry point
 │   └── Cargo.toml
-├── backend/                      # FastAPI backend
-│   ├── server.py                 # FastAPI app entry
-│   ├── routes/                   # API route handlers
-│   │   ├── characters.py         # Character endpoints
-│   │   └── models.py             # Live2D model endpoints
-│   ├── controllers/              # Business logic
-│   │   └── streaming_controller.py
-│   ├── providers/                # LLM provider abstraction
-│   │   ├── base_provider.py
-│   │   ├── litellm_provider.py
-│   │   └── provider_factory.py
-│   ├── characters/               # Character card system
-│   │   ├── character_parser.py
-│   │   └── context_builder.py
-│   ├── memory/                   # Conversation memory
-│   │   └── memory_manager.py
-│   ├── middleware/               # Auth & security
-│   │   └── auth.py
-│   └── utils/                    # Utilities
-│       └── logger.js             # Winston structured logger
-├── tts-server.py                 # Python TTS HTTP server
-├── tts-bridge/                   # TTS client library
-│   ├── tts_bridge.py
-│   └── requirements.txt
+├── backend_fastapi/              # Unified FastAPI backend
+│   ├── main.py                   # FastAPI app entry point
+│   ├── core/                     # Core modules
+│   │   ├── config.py             # Pydantic Settings
+│   │   └── security.py           # Sanitization, CSP, validation
+│   ├── api/                      # API layer
+│   │   ├── deps.py               # Dependency injection (auth, rate limit)
+│   │   └── routes/               # Route handlers
+│   │       ├── chat.py           # Chat streaming (SSE)
+│   │       ├── tts.py            # TTS + voice cloning
+│   │       ├── models.py         # LLM & Live2D model management
+│   │       └── characters.py     # Character card CRUD
+│   ├── services/                 # Business logic
+│   │   ├── litellm_service.py    # Unified LLM gateway
+│   │   ├── tts_service.py        # Offline TTS (Coqui/Piper/Edge)
+│   │   └── character_service.py  # Character card parser (V2 spec)
+│   ├── utils/                    # Utilities
+│   │   ├── logger.py             # Structured logging
+│   │   └── secure_upload.py      # ZIP bomb protection
+│   └── requirements.txt          # Python dependencies
+├── docker/                       # Docker deployment
+│   ├── docker-compose.yml        # Service orchestration
+│   ├── backend/Dockerfile        # Backend container
+│   ├── tts/Dockerfile            # TTS container
+│   ├── ollama/Dockerfile         # Ollama GPU container
+│   ├── nginx/                    # Reverse proxy config
+│   └── scripts/                  # Deploy & update scripts
 ├── logs/                         # Log files (auto-generated)
-│   ├── combined-YYYY-MM-DD.log   # All backend logs
-│   ├── error-YYYY-MM-DD.log      # Backend errors only
-│   ├── tts-server-YYYY-MM-DD.log # TTS logs
-│   └── tts-error-YYYY-MM-DD.log  # TTS errors only
 ├── public/                       # Static assets
 │   └── models/                   # Live2D model files
 ├── config.json                   # Application configuration
 ├── .env.example                  # Environment template
+├── vite.config.ts                # Vite build configuration
 └── README.md                     # This file
 ```
 
@@ -1004,21 +990,21 @@ ollama serve
 ollama pull llama3.2
 ```
 
-#### 3. TTS Server not responding
+#### 3. TTS not responding
 
 **Solution:**
 ```bash
-# Check if TTS server is running
-curl http://localhost:8000/generate \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"text": "test"}'
+# TTS is integrated into the FastAPI backend
+# Check if backend is running and TTS is healthy:
+curl http://localhost:3000/api/tts/health
 
-# Install Python dependencies
-pip install pyttsx3
+# If not running, restart the backend:
+uvicorn backend_fastapi.main:app --host 0.0.0.0 --port 3000 --reload
 
-# Restart TTS server
-python tts-server.py
+# For offline TTS, install Coqui or Piper:
+pip install TTS   # Coqui XTTS (voice cloning support)
+# or
+pip install piper-tts   # Piper (lightweight)
 ```
 
 #### 4. Live2D model not loading

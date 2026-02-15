@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from backend_fastapi.api.deps import CurrentUserDep, LLMServiceDep, RateLimitDep, SettingsDep
+from backend_fastapi.core.security import sanitize_model_identifier
 from backend_fastapi.utils.logger import get_logger
 from backend_fastapi.utils.secure_upload import (
     secure_extract_zip,
@@ -112,26 +113,32 @@ async def switch_model(
     Args:
         new_model: Model identifier (e.g., 'ollama/llama3.2', 'openai/gpt-4o')
     """
-    success = llm_service.switch_model(new_model)
+    model = sanitize_model_identifier(new_model)
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid model format"
+        )
+    
+    success = llm_service.switch_model(model)
     
     if success:
         # Verify connection
-        health = await llm_service.check_connection(new_model)
+        health = await llm_service.check_connection(model)
         
         return {
             "success": True,
-            "message": f"Switched to {new_model}",
-            "active_model": new_model,
+            "message": f"Switched to {model}",
+            "active_model": model,
             "connected": health["connected"],
             "timestamp": datetime.now().isoformat()
         }
     else:
-        return {
-            "success": False,
-            "error": f"Failed to switch to {new_model}",
-            "active_model": llm_service.active_model,
-            "timestamp": datetime.now().isoformat()
-        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to switch to {model}"
+        )
+
 
 
 @router.post("/upload")

@@ -22,8 +22,13 @@ RUN pip install --no-cache-dir -r tts-server-requirements.txt
 COPY tts-server.py .
 COPY tts-bridge/ ./tts-bridge/
 
-# Create logs directory
-RUN mkdir -p /app/logs
+# Create non-root user and logs directory with proper ownership
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    mkdir -p /app/logs && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Production stage
 FROM base as production
